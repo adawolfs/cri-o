@@ -296,6 +296,12 @@ The `crio.metrics` table containers settings pertaining to the Prometheus based 
 **metrics_socket**=""
   The socket on which the metrics server will listen.
 
+## CRIO.SYSTEM 
+The `crio.system` table contains system context configuration for container image library.
+
+**big_files_temporary_dir**="" 
+  Path to the temporary directory to use for storing big files.
+
 # SEE ALSO
 crio.conf.d(5), containers-storage.conf(5), containers-policy.json(5), containers-registries.conf(5), crio(8)
 

@@ -388,4 +388,10 @@ metrics_port = {{ .MetricsPort }}
 
 # Local socket path to bind the metrics server to
 metrics_socket = "{{ .MetricsSocket }}"
+
+# A system context configuration for container image library.
+[crio.system]
+
+# Temporary directory to use for storing big files
+big_files_temporary_dir = "{{ .BigFilesTemporaryDir }}"
 `

@@ -355,3 +355,10 @@ enable_metrics = false
 
 # The port on which the metrics server will listen.
 metrics_port = 9090
+
+# A system context configuration for container image library.
+[crio.system]
+
+# Temporary directory to use for storing big files
+big_files_temporary_dir = "/var/tmp"
+

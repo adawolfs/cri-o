@@ -337,6 +337,8 @@ type ImageConfig struct {
 	ImageVolumes ImageVolumesType `toml:"image_volumes"`
 	// Registries holds a list of registries used to pull unqualified images
 	Registries []string `toml:"registries"`
+	// Temporary directory for big files
+	BigFilesTemporaryDir string `toml:"big_files_temporary_dir"`
 }
 
 // NetworkConfig represents the "crio.network" TOML config table
@@ -403,26 +405,6 @@ type MetricsConfig struct {
 	MetricsSocket string `toml:"metrics_socket"`
 }
 
-// SystemConfig represents the "crio.system" TOML config table.
-type SystemConfig struct {
-	BigFilesTemporaryDir string `toml:"big_files_temporary_dir"`
-	*types.SystemContext
-}
-
-// Context returns a merged SystemContext object.
-func (sc SystemConfig) Context() *types.SystemContext {
-	sc.SystemContext.BigFilesTemporaryDir = sc.BigFilesTemporaryDir
-	return sc.SystemContext
-}
-
-// NewSystemConfig Creates a new SystemConfig
-func NewSystemConfig(c *types.SystemContext) SystemConfig {
-	return SystemConfig{
-		c.BigFilesTemporaryDir,
-		c,
-	}
-}
-
 // tomlConfig is another way of looking at a Config, which is
 // TOML-friendly (it has all of the explicit tables). It's just used for
 // conversions.
@@ -434,7 +416,6 @@ type tomlConfig struct {
 		Image   struct{ ImageConfig }   `toml:"image"`
 		Network struct{ NetworkConfig } `toml:"network"`
 		Metrics struct{ MetricsConfig } `toml:"metrics"`
-		System  struct{ SystemConfig }  `toml:"system"`
 	} `toml:"crio"`
 }
 
@@ -445,7 +426,9 @@ func (t *tomlConfig) toConfig(c *Config) {
 	c.ImageConfig = t.Crio.Image.ImageConfig
 	c.NetworkConfig = t.Crio.Network.NetworkConfig
 	c.MetricsConfig = t.Crio.Metrics.MetricsConfig
-	c.SystemContext = t.Crio.System.SystemConfig.Context()
+
+	// Setup SystemContext
+	c.SystemContext.BigFilesTemporaryDir = c.ImageConfig.BigFilesTemporaryDir
 }
 
 func (t *tomlConfig) fromConfig(c *Config) {
@@ -455,7 +438,6 @@ func (t *tomlConfig) fromConfig(c *Config) {
 	t.Crio.Image.ImageConfig = c.ImageConfig
 	t.Crio.Network.NetworkConfig = c.NetworkConfig
 	t.Crio.Metrics.MetricsConfig = c.MetricsConfig
-	t.Crio.System.SystemConfig = NewSystemConfig(c.SystemContext)
 }
 
 // UpdateFromFile populates the Config from the TOML-encoded file at the given path.
@@ -597,10 +579,11 @@ func DefaultConfig() (*Config, error) {
 			cgroupManager:            cgroupManager,
 		},
 		ImageConfig: ImageConfig{
-			DefaultTransport: "docker://",
-			PauseImage:       "k8s.gcr.io/pause:3.2",
-			PauseCommand:     "/pause",
-			ImageVolumes:     ImageVolumesMkdir,
+			DefaultTransport:     "docker://",
+			PauseImage:           "k8s.gcr.io/pause:3.2",
+			PauseCommand:         "/pause",
+			ImageVolumes:         ImageVolumesMkdir,
+			BigFilesTemporaryDir: "",
 		},
 		NetworkConfig: NetworkConfig{
 			NetworkDir: cniConfigDir,

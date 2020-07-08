@@ -361,6 +361,8 @@ image_volumes = "{{ .ImageVolumes }}"
 #registries = [
 # {{ range $opt := .Registries }}{{ printf "\t%q,\n#" $opt }}{{ end }}]
 
+# Temporary directory to use for storing big files
+big_files_temporary_dir = "{{ .BigFilesTemporaryDir }}"
 
 # The crio.network table containers settings pertaining to the management of
 # CNI plugins.
@@ -388,10 +390,4 @@ metrics_port = {{ .MetricsPort }}
 
 # Local socket path to bind the metrics server to
 metrics_socket = "{{ .MetricsSocket }}"
-
-# A system context configuration for container image library.
-[crio.system]
-
-# Temporary directory to use for storing big files
-big_files_temporary_dir = "{{ .BigFilesTemporaryDir }}"
 `

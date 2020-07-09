@@ -337,6 +337,8 @@ type ImageConfig struct {
 	ImageVolumes ImageVolumesType `toml:"image_volumes"`
 	// Registries holds a list of registries used to pull unqualified images
 	Registries []string `toml:"registries"`
+	// Temporary directory for big files
+	BigFilesTemporaryDir string `toml:"big_files_temporary_dir"`
 }
 
 // NetworkConfig represents the "crio.network" TOML config table
@@ -424,6 +426,9 @@ func (t *tomlConfig) toConfig(c *Config) {
 	c.ImageConfig = t.Crio.Image.ImageConfig
 	c.NetworkConfig = t.Crio.Network.NetworkConfig
 	c.MetricsConfig = t.Crio.Metrics.MetricsConfig
+
+	// Setup SystemContext
+	c.SystemContext.BigFilesTemporaryDir = c.ImageConfig.BigFilesTemporaryDir
 }
 
 func (t *tomlConfig) fromConfig(c *Config) {

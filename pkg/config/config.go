@@ -419,6 +419,11 @@ type tomlConfig struct {
 	} `toml:"crio"`
 }
 
+// SetSystemContext configures the SystemContext used by containers/image library
+func (t *tomlConfig) SetSystemContext(c *Config) {
+	c.SystemContext.BigFilesTemporaryDir = c.ImageConfig.BigFilesTemporaryDir
+}
+
 func (t *tomlConfig) toConfig(c *Config) {
 	c.RootConfig = t.Crio.RootConfig
 	c.APIConfig = t.Crio.API.APIConfig
@@ -426,9 +431,7 @@ func (t *tomlConfig) toConfig(c *Config) {
 	c.ImageConfig = t.Crio.Image.ImageConfig
 	c.NetworkConfig = t.Crio.Network.NetworkConfig
 	c.MetricsConfig = t.Crio.Metrics.MetricsConfig
-
-	// Setup SystemContext
-	c.SystemContext.BigFilesTemporaryDir = c.ImageConfig.BigFilesTemporaryDir
+	t.SetSystemContext(c)
 }
 
 func (t *tomlConfig) fromConfig(c *Config) {

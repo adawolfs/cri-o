@@ -645,7 +645,7 @@ func getCrioFlags(defConf *libconfig.Config) []cli.Flag {
 		},
 		&cli.StringFlag{
 			Name:    "big-files-temporary-dir",
-			Usage:   "Temporary directory to use for storing big files",
+			Usage:   `Temporary directory to use for storing big files, used to store image blobs and data streams related to containers image management.`,
 			EnvVars: []string{"CONTAINER_BIG_FILES_TEMPORARY_DIR"},
 		},
 		&cli.BoolFlag{

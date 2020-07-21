@@ -108,7 +108,7 @@ BASE_LDFLAGS = ${SHRINKFLAGS} \
 
 GO_LDFLAGS = -ldflags '${BASE_LDFLAGS} ${EXTRA_LDFLAGS}'
 
-TESTIMAGE_VERSION := master-1.3.6
+TESTIMAGE_VERSION := master-1.3.7
 TESTIMAGE_REGISTRY := quay.io/crio
 TESTIMAGE_SCRIPT := scripts/build-test-image -r $(TESTIMAGE_REGISTRY) -v $(TESTIMAGE_VERSION)
 TESTIMAGE_NAME ?= $(shell $(TESTIMAGE_SCRIPT) -d)
@@ -287,7 +287,7 @@ ${GO_MOD_OUTDATED}:
 
 ${GOLANGCI_LINT}:
 	export \
-		VERSION=v1.26.0 \
+		VERSION=v1.28.3 \
 		URL=https://raw.githubusercontent.com/golangci/golangci-lint \
 		BINDIR=${BUILD_BIN_PATH} && \
 	curl -sfL $$URL/$$VERSION/install.sh | sh -s $$VERSION

@@ -279,9 +279,6 @@ type RuntimeConfig struct {
 	// to the kubernetes log file
 	LogToJournald bool `toml:"log_to_journald"`
 
-	// Deprecated: In favor of ManageNSLifecycle (described below)
-	ManageNetworkNSLifecycle bool `toml:"manage_network_ns_lifecycle"`
-
 	// ManageNSLifecycle determines whether we pin and remove namespaces
 	// and manage their lifecycle
 	ManageNSLifecycle bool `toml:"manage_ns_lifecycle"`
@@ -576,6 +573,7 @@ func DefaultConfig() (*Config, error) {
 			LogLevel:                 "info",
 			HooksDir:                 []string{hooks.DefaultDir},
 			NamespacesDir:            "/var/run",
+			ManageNSLifecycle:        true,
 			seccompConfig:            seccomp.New(),
 			apparmorConfig:           apparmor.New(),
 			ulimitsConfig:            ulimits.New(),
@@ -753,10 +751,6 @@ func (c *RuntimeConfig) Validate(systemContext *types.SystemContext, onExecution
 		return errors.New("conmon cgroup should be 'pod' or a systemd slice")
 	}
 
-	// while ManageNetworkNSLifecycle is being deprecated, set
-	// ManageNSLifecycle to be true if either are
-	c.ManageNSLifecycle = c.ManageNetworkNSLifecycle || c.ManageNSLifecycle
-
 	if c.UIDMappings != "" && c.ManageNSLifecycle {
 		return fmt.Errorf("cannot use UIDMappings with ManageNSLifecycle")
 	}
@@ -833,6 +827,10 @@ func (c *RuntimeConfig) Validate(systemContext *types.SystemContext, onExecution
 			return errors.Wrap(err, "unable to update cgroup manager")
 		}
 		c.cgroupManager = cgroupManager
+
+		if !c.cgroupManager.IsSystemd() && c.ConmonCgroup != "pod" && c.ConmonCgroup != "" {
+			return errors.New("cgroupfs manager conmon cgroup should be 'pod' or empty")
+		}
 	}
 
 	return nil

@@ -103,7 +103,7 @@ func (r *Runtime) ValidateRuntimeHandler(handler string) (*config.RuntimeHandler
 // WaitContainerStateStopped runs a loop polling UpdateStatus(), seeking for
 // the container status to be updated to 'stopped'. Either it gets the expected
 // status and returns nil, or it reaches the timeout and returns an error.
-func (r *Runtime) WaitContainerStateStopped(ctx context.Context, c *Container) (err error) {
+func (r *Runtime) WaitContainerStateStopped(ctx context.Context, c *Container) error {
 	impl, err := r.RuntimeImpl(c)
 	if err != nil {
 		return err
@@ -126,11 +126,10 @@ func (r *Runtime) WaitContainerStateStopped(ctx context.Context, c *Container) (
 				// Check if the container is stopped
 				if err := impl.UpdateContainerStatus(c); err != nil {
 					done <- err
-					close(done)
 					return
 				}
 				if c.State().Status == ContainerStateStopped {
-					close(done)
+					done <- nil
 					return
 				}
 				time.Sleep(100 * time.Millisecond)
@@ -139,6 +138,7 @@ func (r *Runtime) WaitContainerStateStopped(ctx context.Context, c *Container) (
 	}()
 	select {
 	case err = <-done:
+		close(done)
 		break
 	case <-ctx.Done():
 		close(chControl)

@@ -77,7 +77,7 @@ type exitCodeInfo struct {
 }
 
 // CreateContainer creates a container.
-func (r *runtimeOCI) CreateContainer(c *Container, cgroupParent string) (err error) {
+func (r *runtimeOCI) CreateContainer(c *Container, cgroupParent string) (retErr error) {
 	var stderrBuf bytes.Buffer
 	parentPipe, childPipe, err := newPipe()
 	childStartPipe, parentStartPipe, err := newPipe()
@@ -182,7 +182,7 @@ func (r *runtimeOCI) CreateContainer(c *Container, cgroupParent string) (err err
 
 	// We will delete all container resources if creation fails
 	defer func() {
-		if err != nil {
+		if retErr != nil {
 			if err := r.DeleteContainer(c); err != nil {
 				logrus.Warnf("unable to delete container %s: %v", c.ID(), err)
 			}
@@ -368,7 +368,7 @@ func (r *runtimeOCI) ExecContainer(c *Container, cmd []string, stdin io.Reader, 
 }
 
 // ExecSyncContainer execs a command in a container and returns it's stdout, stderr and return code.
-func (r *runtimeOCI) ExecSyncContainer(c *Container, command []string, timeout int64) (resp *ExecSyncResponse, err error) {
+func (r *runtimeOCI) ExecSyncContainer(c *Container, command []string, timeout int64) (*ExecSyncResponse, error) {
 	pidFile, parentPipe, childPipe, err := prepareExec()
 	if err != nil {
 		return nil, &ExecSyncError{
@@ -718,6 +718,11 @@ func (r *runtimeOCI) UpdateContainerStatus(c *Container) error {
 			// went away we do not error out stopping kubernetes to recover.
 			// We always populate the fields below so kube can restart/reschedule
 			// containers failing.
+			if exitErr, isExitError := err.(*exec.ExitError); isExitError {
+				logrus.Errorf("failed to update container state for %s: stdout: %s, stderr: %s", c.id, string(out), string(exitErr.Stderr))
+			} else {
+				logrus.Errorf("failed to update container state for %s: %v", c.id, err)
+			}
 			c.state.Status = ContainerStateStopped
 			if err := updateContainerStatusFromExitFile(c); err != nil {
 				c.state.Finished = time.Now()
@@ -788,6 +793,7 @@ func (r *runtimeOCI) UpdateContainerStatus(c *Container) error {
 			return fmt.Errorf("status code conversion failed: %v", err)
 		}
 		c.state.ExitCode = utils.Int32Ptr(int32(statusCode))
+		logrus.Debugf("found exit code for %s: %d", c.id, statusCode)
 	}
 
 	oomFilePath := filepath.Join(c.bundlePath, "oom")
@@ -1018,6 +1024,7 @@ func (r *runtimeOCI) ReopenContainerLog(c *Container) error {
 	defer watcher.Close()
 
 	done := make(chan struct{})
+	doneClosed := false
 	errorCh := make(chan error)
 	go func() {
 		for {
@@ -1028,7 +1035,7 @@ func (r *runtimeOCI) ReopenContainerLog(c *Container) error {
 					logrus.Debugf("file created %s", event.Name)
 					if event.Name == c.LogPath() {
 						logrus.Debugf("expected log file created")
-						close(done)
+						done <- struct{}{}
 						return
 					}
 				}
@@ -1043,6 +1050,7 @@ func (r *runtimeOCI) ReopenContainerLog(c *Container) error {
 	if err := watcher.Add(cLogDir); err != nil {
 		logrus.Errorf("watcher.Add(%q) failed: %s", cLogDir, err)
 		close(done)
+		doneClosed = true
 	}
 
 	if _, err = fmt.Fprintf(controlFile, "%d %d %d\n", 2, 0, 0); err != nil {
@@ -1051,8 +1059,14 @@ func (r *runtimeOCI) ReopenContainerLog(c *Container) error {
 
 	select {
 	case err := <-errorCh:
+		if !doneClosed {
+			close(done)
+		}
 		return err
 	case <-done:
+		if !doneClosed {
+			close(done)
+		}
 		break
 	}
 

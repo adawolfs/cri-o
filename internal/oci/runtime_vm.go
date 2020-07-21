@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -43,6 +44,7 @@ type runtimeVM struct {
 	client *ttrpc.Client
 	task   task.TaskService
 
+	sync.Mutex
 	ctrs map[string]containerInfo
 }
 
@@ -75,7 +77,7 @@ func newRuntimeVM(path string) RuntimeImpl {
 }
 
 // CreateContainer creates a container.
-func (r *runtimeVM) CreateContainer(c *Container, cgroupParent string) (err error) {
+func (r *runtimeVM) CreateContainer(c *Container, cgroupParent string) (retErr error) {
 	logrus.Debug("runtimeVM.createContainer() start")
 	defer logrus.Debug("runtimeVM.createContainer() end")
 
@@ -96,7 +98,7 @@ func (r *runtimeVM) CreateContainer(c *Container, cgroupParent string) (err erro
 	}
 
 	defer func() {
-		if err != nil {
+		if retErr != nil {
 			containerIO.Close()
 		}
 	}()
@@ -109,13 +111,18 @@ func (r *runtimeVM) CreateContainer(c *Container, cgroupParent string) (err erro
 	containerIO.AddOutput("logfile", f, f)
 	containerIO.Pipe()
 
+	r.Lock()
 	r.ctrs[c.ID()] = containerInfo{
 		cio: containerIO,
 	}
+	r.Unlock()
 
 	defer func() {
-		if err != nil {
-			delete(r.ctrs, c.ID())
+		if retErr != nil {
+			logrus.WithError(err).Warnf("Cleaning up container %s", c.ID())
+			if cleanupErr := r.deleteContainer(c, true); cleanupErr != nil {
+				logrus.WithError(cleanupErr).Infof("deleteContainer failed for container %s", c.ID())
+			}
 		}
 	}()
 
@@ -141,10 +148,12 @@ func (r *runtimeVM) CreateContainer(c *Container, cgroupParent string) (err erro
 
 	select {
 	case err = <-createdCh:
+		f.Close()
 		if err != nil {
 			return errors.Errorf("CreateContainer failed: %v", err)
 		}
 	case <-time.After(ContainerCreateTimeout):
+		f.Close()
 		if err := r.remove(r.ctx, c.ID(), ""); err != nil {
 			return err
 		}
@@ -300,7 +309,7 @@ func (r *runtimeVM) ExecSyncContainer(c *Container, command []string, timeout in
 	}, nil
 }
 
-func (r *runtimeVM) execContainerCommon(c *Container, cmd []string, timeout int64, stdin io.Reader, stdout, stderr io.WriteCloser, tty bool, resize <-chan remotecommand.TerminalSize) (exitCode int32, err error) {
+func (r *runtimeVM) execContainerCommon(c *Container, cmd []string, timeout int64, stdin io.Reader, stdout, stderr io.WriteCloser, tty bool, resize <-chan remotecommand.TerminalSize) (exitCode int32, retErr error) {
 	logrus.Debug("runtimeVM.execContainer() start")
 	defer logrus.Debug("runtimeVM.execContainer() end")
 
@@ -356,7 +365,7 @@ func (r *runtimeVM) execContainerCommon(c *Container, cmd []string, timeout int6
 	}
 
 	defer func() {
-		if err != nil {
+		if retErr != nil {
 			if err := r.remove(ctx, c.ID(), execID); err != nil {
 				logrus.Debugf("unable to remove container %s: %v", c.ID(), err)
 			}
@@ -527,24 +536,36 @@ func (r *runtimeVM) DeleteContainer(c *Container) error {
 	c.opLock.Lock()
 	defer c.opLock.Unlock()
 
+	return r.deleteContainer(c, false)
+}
+
+// deleteContainer performs all the operations needed to delete a container.
+// force must only be used on clean-up cases.
+// It does **not** Lock the container, thus it's the caller responsibility to do so, when needed.
+func (r *runtimeVM) deleteContainer(c *Container, force bool) error {
+	r.Lock()
 	cInfo, ok := r.ctrs[c.ID()]
-	if !ok {
+	r.Unlock()
+	if !ok && !force {
 		return errors.New("Could not retrieve container information")
 	}
 
-	if err := cInfo.cio.Close(); err != nil {
+	if err := cInfo.cio.Close(); err != nil && !force {
 		return err
 	}
 
-	if err := r.remove(r.ctx, c.ID(), ""); err != nil {
+	if err := r.remove(r.ctx, c.ID(), ""); err != nil && !force {
 		return err
 	}
 
-	if _, err := r.task.Shutdown(r.ctx, &task.ShutdownRequest{ID: c.ID()}); err != nil {
+	_, err := r.task.Shutdown(r.ctx, &task.ShutdownRequest{ID: c.ID()})
+	if err != nil && !errors.Is(err, ttrpc.ErrClosed) && !force {
 		return err
 	}
 
+	r.Lock()
 	delete(r.ctrs, c.ID())
+	r.Unlock()
 
 	return nil
 }
@@ -688,7 +709,9 @@ func (r *runtimeVM) AttachContainer(c *Container, inputStream io.Reader, outputS
 		}
 	})
 
+	r.Lock()
 	cInfo, ok := r.ctrs[c.ID()]
+	r.Unlock()
 	if !ok {
 		return errors.New("Could not retrieve container information")
 	}
@@ -774,7 +797,7 @@ func (r *runtimeVM) remove(ctx context.Context, ctrID, execID string) error {
 	return nil
 }
 
-func (r runtimeVM) resizePty(ctx context.Context, ctrID, execID string, size remotecommand.TerminalSize) error {
+func (r *runtimeVM) resizePty(ctx context.Context, ctrID, execID string, size remotecommand.TerminalSize) error {
 	_, err := r.task.ResizePty(ctx, &task.ResizePtyRequest{
 		ID:     ctrID,
 		ExecID: execID,

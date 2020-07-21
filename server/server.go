@@ -29,8 +29,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	pb "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
+	"k8s.io/kubernetes/pkg/kubelet/cri/streaming"
 	"k8s.io/kubernetes/pkg/kubelet/dockershim/network/hostport"
-	"k8s.io/kubernetes/pkg/kubelet/server/streaming"
 	iptablesproxy "k8s.io/kubernetes/pkg/proxy/iptables"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 	utilexec "k8s.io/utils/exec"
@@ -39,6 +39,7 @@ import (
 const (
 	shutdownFile        = "/var/lib/crio/crio.shutdown"
 	certRefreshInterval = time.Minute * 5
+	rootlessEnvName     = "_CRIO_ROOTLESS"
 )
 
 // StreamService implements streaming.Runtime.
@@ -343,6 +344,12 @@ func New(
 	idMappings, err := getIDMappings(config)
 	if err != nil {
 		return nil, err
+	}
+
+	if os.Getenv(rootlessEnvName) == "" {
+		// Not running as rootless, reset XDG_RUNTIME_DIR and DBUS_SESSION_BUS_ADDRESS
+		os.Unsetenv("XDG_RUNTIME_DIR")
+		os.Unsetenv("DBUS_SESSION_BUS_ADDRESS")
 	}
 
 	s := &Server{
